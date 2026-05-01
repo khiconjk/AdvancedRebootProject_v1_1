@@ -1,0 +1,79 @@
+name: Build AdvancedReboot APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.gradle"
+      - "gradle.properties"
+      - "settings.gradle"
+      - "app/**"
+      - "system/**"
+      - ".github/workflows/build-apk.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        run: |
+          gradle :app:assembleDebug --stacktrace
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p artifact
+          cp app/build/outputs/apk/debug/app-debug.apk artifact/AdvancedReboot.apk
+          cp system/privapp-permissions-advancedreboot.xml artifact/privapp-permissions-advancedreboot.xml
+          cat > artifact/INSTALL.txt <<'EOF'
+          Install as privileged app:
+
+          su
+          mount -o rw,remount /
+
+          rm -rf /system/priv-app/AdvancedReboot
+          rm -f /system/etc/permissions/privapp-permissions-advancedreboot.xml
+
+          mkdir -p /system/priv-app/AdvancedReboot
+          cp /sdcard/AdvancedReboot.apk /system/priv-app/AdvancedReboot/AdvancedReboot.apk
+          cp /sdcard/privapp-permissions-advancedreboot.xml /system/etc/permissions/privapp-permissions-advancedreboot.xml
+
+          chmod 755 /system/priv-app/AdvancedReboot
+          chmod 644 /system/priv-app/AdvancedReboot/AdvancedReboot.apk
+          chmod 644 /system/etc/permissions/privapp-permissions-advancedreboot.xml
+          chown -R root:root /system/priv-app/AdvancedReboot
+          chown root:root /system/etc/permissions/privapp-permissions-advancedreboot.xml
+          restorecon -R /system/priv-app/AdvancedReboot
+          restorecon /system/etc/permissions/privapp-permissions-advancedreboot.xml
+          sync
+          reboot
+          EOF
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: AdvancedReboot-v1.1
+          path: artifact/*
